@@ -1,0 +1,36 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "CONSTITUTION.md",
+    "docs/architecture/ARCHITECTURE_GUIDELINE.md",
+    "docs/backend/BACKEND_GUIDELINE.md",
+    "docs/shared/api-contract.md",
+    "docs/shared/authentication.md",
+    "docs/shared/error-handling.md"
+  ],
+  "agents": {
+    "build": {
+      "model": "opencode/deepseek-v4-flash-max",
+      "description": "Primary coding agent for complex reasoning and multi-file changes"
+    },
+    "plan": {
+      "model": "opencode/qwen-3.7-max",
+      "description": "Architectural planning and system design"
+    },
+    "fast-edit": {
+      "model": "opencode/deepseek-v4-flash",
+      "description": "Quick inline fixes, single-file edits, and docstrings"
+    },
+    "reviewer": {
+      "model": "opencode/minimax-m3",
+      "description": "Lightweight code review and sanity checks",
+      "mode": "subagent"
+    }
+  },
+  "references": {
+    "frontend": {
+      "path": "../WA03-SK-Quiz-Frontend",
+      "description": "Next.js App Router frontend repo. Use for frontend feature structure, components, and UI design."
+    }
+  }
+}
