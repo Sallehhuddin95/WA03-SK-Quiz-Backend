@@ -1,6 +1,25 @@
 from fastapi.testclient import TestClient
 
 
+def login(
+    client: TestClient, username: str, password: str = "rahasia123"
+) -> dict:
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"username": username, "kata_laluan": password},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["data"]
+
+
+def auth_client(
+    app, username: str, password: str = "rahasia123"
+) -> TestClient:
+    client = TestClient(app)
+    login(client, username, password)
+    return client
+
+
 def soalan_aneka(
     *,
     topic_id: int = 1,
@@ -147,14 +166,12 @@ def start_attempt(
     *,
     topic_id: int = 1,
     tahap: str = "mudah",
-    nama_peserta: str = "Ali",
 ) -> dict:
     response = client.post(
         "/api/v1/quiz-attempts",
         json={
             "topic_id": topic_id,
             "tahap_kesukaran": tahap,
-            "nama_peserta": nama_peserta,
         },
     )
     assert response.status_code == 201, response.text

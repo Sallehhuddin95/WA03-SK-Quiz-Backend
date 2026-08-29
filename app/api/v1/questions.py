@@ -3,7 +3,9 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
+from app.api.deps import require_permission
 from app.core.database import get_db
+from app.models.user import User
 from app.repositories.question import QuestionRepository
 from app.schemas.common import Envelope, PaginatedEnvelope
 from app.schemas.question import (
@@ -28,6 +30,7 @@ def get_question_service() -> QuestionService:
 def list_questions(
     db: DbSession,
     service: Annotated[QuestionService, Depends(get_question_service)],
+    staff: Annotated[User, Depends(require_permission("question:manage"))],
     topic_id: Annotated[int | None, Query()] = None,
     difficulty: Annotated[str | None, Query()] = None,
     question_type: Annotated[str | None, Query()] = None,
@@ -55,6 +58,7 @@ def get_question(
     question_id: int,
     db: DbSession,
     service: Annotated[QuestionService, Depends(get_question_service)],
+    staff: Annotated[User, Depends(require_permission("question:manage"))],
 ):
     return Envelope(data=service.get_question(db, question_id))
 
@@ -68,6 +72,7 @@ def create_question(
     payload: CreateQuestionRequest,
     db: DbSession,
     service: Annotated[QuestionService, Depends(get_question_service)],
+    staff: Annotated[User, Depends(require_permission("question:manage"))],
 ):
     return Envelope(data=service.create_question(db, payload))
 
@@ -81,6 +86,7 @@ def update_question(
     payload: UpdateQuestionRequest,
     db: DbSession,
     service: Annotated[QuestionService, Depends(get_question_service)],
+    staff: Annotated[User, Depends(require_permission("question:manage"))],
 ):
     return Envelope(data=service.update_question(db, question_id, payload))
 
@@ -90,6 +96,7 @@ def delete_question(
     question_id: int,
     db: DbSession,
     service: Annotated[QuestionService, Depends(get_question_service)],
+    staff: Annotated[User, Depends(require_permission("question:manage"))],
 ):
     return Envelope(data=service.delete_question(db, question_id))
 
@@ -103,5 +110,6 @@ def update_question_status(
     payload: UpdateQuestionStatusRequest,
     db: DbSession,
     service: Annotated[QuestionService, Depends(get_question_service)],
+    staff: Annotated[User, Depends(require_permission("question:manage"))],
 ):
     return Envelope(data=service.update_question_status(db, question_id, payload))

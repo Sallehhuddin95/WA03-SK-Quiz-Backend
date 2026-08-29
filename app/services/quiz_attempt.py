@@ -2,14 +2,17 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
+from app.api.deps import KELAS_SCOPE_ALL, KelasScope
 from app.core.exceptions import (
     InsufficientQuestionsError,
     InvalidQuestionError,
+    NoPermissionError,
     QuizAlreadySubmittedError,
     QuizNotSubmittedError,
     ResourceNotFoundError,
 )
 from app.core.pagination import normalize_pagination
+from app.models.user import User
 from app.repositories.question import QuestionRepository
 from app.repositories.quiz_attempt import QuizAttemptRepository
 from app.schemas.quiz_attempt import (
@@ -18,6 +21,7 @@ from app.schemas.quiz_attempt import (
     AttemptResultResponse,
     AttemptStartResponse,
     AttemptSummaryResponse,
+    QuestionSummaryResponse,
     ResultDetailItemResponse,
     StartAttemptRequest,
     SubmitAttemptRequest,
@@ -38,18 +42,34 @@ class QuizAttemptService:
         self._question_repository = question_repository
 
     def list_attempts(
-        self, db: Session, filters: AttemptFilterParams
+        self,
+        db: Session,
+        user: User,
+        scope: KelasScope | object,
+        filters: AttemptFilterParams,
     ) -> tuple[list[AttemptSummaryResponse], dict]:
         page, page_size = normalize_pagination(
             filters.page, filters.page_size, default_page_size=20
         )
         offset = (page - 1) * page_size
+
+        user_id = None
+        kelas_ids = None
+        participant_name = filters.participant_name
+        if user.role == "murid":
+            user_id = user.id
+            participant_name = None
+        elif scope is not KELAS_SCOPE_ALL:
+            kelas_ids = set(scope.visible)
+
         attempts, total_items = self._repository.list_attempts(
             db,
             topic_id=filters.topic_id,
             difficulty=filters.difficulty,
-            participant_name=filters.participant_name,
+            participant_name=participant_name,
             status=filters.status,
+            user_id=user_id,
+            kelas_ids=kelas_ids,
             offset=offset,
             limit=page_size,
         )
@@ -61,12 +81,14 @@ class QuizAttemptService:
             "page": page,
             "page_size": page_size,
             "total_items": total_items,
-            "total_pages": (total_items + page_size - 1) // page_size if total_items > 0 else 0,
+            "total_pages": (
+                (total_items + page_size - 1) // page_size if total_items > 0 else 0
+            ),
         }
         return responses, meta
 
     def start_attempt(
-        self, db: Session, request: StartAttemptRequest
+        self, db: Session, user: User, request: StartAttemptRequest
     ) -> AttemptStartResponse:
         self._semak_topik_wujud(db, request.topic_id)
         jumlah_layak = self._question_repository.count_eligible(
@@ -85,12 +107,14 @@ class QuizAttemptService:
             tahap_kesukaran=request.tahap_kesukaran,
             limit=JUMLAH_SOALAN,
         )
+        nama_peserta = f"{user.nama_first} {user.nama_last}".strip()
         attempt = self._repository.create_attempt(
             db,
             topic_id=request.topic_id,
             tahap_kesukaran=request.tahap_kesukaran,
-            nama_peserta=request.nama_peserta.strip(),
+            nama_peserta=nama_peserta,
             jumlah_soalan=JUMLAH_SOALAN,
+            user_id=user.id,
         )
         self._repository.create_answers(db, attempt.id, question_ids)
         self._repository.commit_attempt(db)
@@ -123,11 +147,17 @@ class QuizAttemptService:
         )
 
     def submit_attempt(
-        self, db: Session, attempt_id: int, request: SubmitAttemptRequest
+        self,
+        db: Session,
+        user: User,
+        attempt_id: int,
+        request: SubmitAttemptRequest,
     ) -> AttemptResultResponse:
         attempt = self._repository.get_attempt_by_id(db, attempt_id)
         if attempt is None:
             raise ResourceNotFoundError("Percubaan tidak dijumpai.")
+        if attempt.user_id != user.id:
+            raise NoPermissionError()
         if attempt.status == "selesai":
             raise QuizAlreadySubmittedError()
 
@@ -167,17 +197,83 @@ class QuizAttemptService:
         return self._build_result(db, attempt)
 
     def get_result(
-        self, db: Session, attempt_id: int, include_questions: bool
+        self,
+        db: Session,
+        user: User,
+        scope: KelasScope | object,
+        attempt_id: int,
+        include_questions: bool,
     ) -> AttemptResultResponse | AttemptResumeResponse:
         attempt = self._repository.get_attempt_by_id(db, attempt_id)
         if attempt is None:
             raise ResourceNotFoundError("Percubaan tidak dijumpai.")
+
+        self._semak_boleh_baca_attempt(db, user, scope, attempt)
 
         if attempt.status == "selesai":
             return self._build_result(db, attempt)
         if include_questions:
             return self._build_resume(db, attempt)
         raise QuizNotSubmittedError()
+
+    def preview_questions(
+        self, db: Session, topic_id: int, tahap_kesukaran: str | None
+    ) -> list[QuestionSummaryResponse]:
+        self._semak_topik_wujud(db, topic_id)
+        if tahap_kesukaran is None:
+            jumlah_layak = 0
+            for tahap in ("mudah", "sederhana", "sukar"):
+                jumlah_layak += self._question_repository.count_eligible(
+                    db, topic_id=topic_id, tahap_kesukaran=tahap
+                )
+        else:
+            jumlah_layak = self._question_repository.count_eligible(
+                db, topic_id=topic_id, tahap_kesukaran=tahap_kesukaran
+            )
+        if jumlah_layak < JUMLAH_SOALAN:
+            raise InsufficientQuestionsError(
+                f"Tidak cukup soalan. Hanya terdapat {jumlah_layak} soalan aktif untuk Topik dan Tahap ini."
+            )
+
+        question_ids = self._question_repository.get_eligible_question_ids(
+            db,
+            topic_id=topic_id,
+            tahap_kesukaran=tahap_kesukaran,
+            limit=JUMLAH_SOALAN,
+        )
+        questions = self._question_repository.get_questions_by_ids(db, question_ids)
+        questions_by_id = {question.id: question for question in questions}
+        ordered = [questions_by_id[qid] for qid in question_ids]
+        return [
+            QuestionSummaryResponse(
+                id=question.id,
+                jenis_soalan=question.jenis_soalan,
+                teks_soalan=question.teks_soalan,
+                pilihan=question.pilihan,
+            )
+            for question in ordered
+        ]
+
+    def _semak_boleh_baca_attempt(
+        self,
+        db: Session,
+        user: User,
+        scope: KelasScope | object,
+        attempt,
+    ) -> None:
+        if user.role == "murid":
+            if attempt.user_id != user.id:
+                raise NoPermissionError()
+            return
+        if scope is KELAS_SCOPE_ALL:
+            return
+        if attempt.user_id is None:
+            raise NoPermissionError()
+        murid = attempt.user
+        if murid is None or murid.kelas_id is None:
+            raise NoPermissionError()
+        if murid.kelas_id not in scope.visible:
+            raise NoPermissionError()
 
     def _build_result(self, db: Session, attempt) -> AttemptResultResponse:
         answers_with_questions = self._repository.get_answers_with_questions(

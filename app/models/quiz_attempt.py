@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
 
@@ -26,6 +26,9 @@ class QuizAttempt(Base):
     masa_hantar: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -35,3 +38,5 @@ class QuizAttempt(Base):
         server_default=func.now(),
         onupdate=func.now(),
     )
+
+    user: Mapped["User | None"] = relationship(back_populates="attempts")
