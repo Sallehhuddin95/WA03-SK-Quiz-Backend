@@ -74,3 +74,49 @@ class InvalidQuestionError(ApiError):
     status_code = 400
     kod = "SOALAN_TIDAK_SAH"
     mesej = "Soalan tidak tergolong dalam kuiz ini."
+
+
+class ValidationError(ApiError):
+    status_code = 400
+    kod = "DATA_TIDAK_SAH"
+    mesej = "Data yang dihantar tidak sah."
+
+
+class InvalidCredentialsError(ApiError):
+    status_code = 401
+    kod = "KELAYAKAN_TIDAK_SAH"
+    mesej = "Nama pengguna atau kata laluan tidak sah."
+
+
+class SessionExpiredError(ApiError):
+    status_code = 401
+    kod = "SESI_TAMAT"
+    mesej = "Sesi anda telah tamat. Sila log masuk semula."
+
+
+class NoPermissionError(ApiError):
+    status_code = 403
+    kod = "TIADA_KEBENARAN"
+    mesej = "Anda tidak mempunyai kebenaran untuk tindakan ini."
+
+
+class AccountDisabledError(ApiError):
+    status_code = 403
+    kod = "AKAUN_TIDAK_AKTIF"
+    mesej = "Akaun anda tidak aktif."
+
+
+class MustChangePasswordError(ApiError):
+    status_code = 403
+    kod = "KATA_LALUAN_PERLU_DITUKAR"
+    mesej = "Anda mesti menukar kata laluan dahulu."
+
+
+class UsernameTakenError(ApiError):
+    status_code = 409
+    kod = "NAMA_PENGGUNA_WUJUD"
+    mesej = "Nama pengguna telah wujud."
+
+
+class InvalidTargetRoleError(NoPermissionError):
+    mesej = "Peranan sasaran tidak sah untuk pengguna ini."

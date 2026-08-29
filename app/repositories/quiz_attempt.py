@@ -7,6 +7,7 @@ from app.models.question import Question
 from app.models.quiz_answer import QuizAnswer
 from app.models.quiz_attempt import QuizAttempt
 from app.models.topic import Topic
+from app.models.user import User
 
 
 class QuizAttemptRepository:
@@ -18,6 +19,8 @@ class QuizAttemptRepository:
         difficulty: str | None,
         participant_name: str | None,
         status: str | None,
+        user_id: int | None,
+        kelas_ids: set[int] | None,
         offset: int,
         limit: int,
     ) -> tuple[list[QuizAttempt], int]:
@@ -30,17 +33,21 @@ class QuizAttemptRepository:
             filters.append(QuizAttempt.nama_peserta.ilike(f"%{participant_name}%"))
         if status is not None:
             filters.append(QuizAttempt.status == status)
+        if user_id is not None:
+            filters.append(QuizAttempt.user_id == user_id)
+        if kelas_ids is not None:
+            filters.append(QuizAttempt.user_id.is_not(None))
+            filters.append(User.kelas_id.in_(kelas_ids))
 
-        count_stmt = (
-            select(func.count())
-            .select_from(QuizAttempt)
-            .where(*filters)
-        )
+        if kelas_ids is not None:
+            base = select(QuizAttempt).join(User, QuizAttempt.user_id == User.id)
+        else:
+            base = select(QuizAttempt)
+        count_stmt = select(func.count()).select_from(base.where(*filters).subquery())
         total_items = db.scalar(count_stmt) or 0
 
         stmt = (
-            select(QuizAttempt)
-            .where(*filters)
+            base.where(*filters)
             .order_by(QuizAttempt.created_at.desc())
             .offset(offset)
             .limit(limit)
@@ -58,6 +65,7 @@ class QuizAttemptRepository:
         tahap_kesukaran: str,
         nama_peserta: str,
         jumlah_soalan: int,
+        user_id: int | None = None,
     ) -> QuizAttempt:
         attempt = QuizAttempt(
             topic_id=topic_id,
@@ -66,6 +74,7 @@ class QuizAttemptRepository:
             status="dalam_progres",
             skor=None,
             jumlah_soalan=jumlah_soalan,
+            user_id=user_id,
         )
         db.add(attempt)
         db.flush()

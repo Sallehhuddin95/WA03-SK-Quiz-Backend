@@ -11,14 +11,6 @@ class StartAttemptRequest(BaseModel):
 
     topic_id: int = Field(gt=0)
     tahap_kesukaran: Difficulty
-    nama_peserta: str = Field(min_length=1, max_length=50)
-
-    @field_validator("nama_peserta")
-    @classmethod
-    def nama_tidak_blank(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("Nama peserta tidak boleh kosong.")
-        return value
 
 
 class AnswerItemRequest(BaseModel):

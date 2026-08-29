@@ -3,7 +3,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
+from app.api.deps import (
+    require_any_permission,
+    require_permission,
+    resolve_kelas_scope,
+)
 from app.core.database import get_db
+from app.models.user import User
 from app.repositories.question import QuestionRepository
 from app.repositories.quiz_attempt import QuizAttemptRepository
 from app.schemas.common import Envelope, PaginatedEnvelope
@@ -31,6 +37,10 @@ def get_quiz_attempt_service() -> QuizAttemptService:
 def list_attempts(
     db: DbSession,
     service: Annotated[QuizAttemptService, Depends(get_quiz_attempt_service)],
+    user: Annotated[
+        User,
+        Depends(require_any_permission("attempt:read_own", "attempt:read_all")),
+    ],
     topic_id: Annotated[int | None, Query()] = None,
     difficulty: Annotated[str | None, Query()] = None,
     participant_name: Annotated[str | None, Query()] = None,
@@ -46,7 +56,8 @@ def list_attempts(
         page=page,
         page_size=page_size,
     )
-    data, meta = service.list_attempts(db, filters)
+    scope = resolve_kelas_scope(db, user)
+    data, meta = service.list_attempts(db, user, scope, filters)
     return PaginatedEnvelope(data=data, meta=meta)
 
 
@@ -59,8 +70,9 @@ def start_attempt(
     payload: StartAttemptRequest,
     db: DbSession,
     service: Annotated[QuizAttemptService, Depends(get_quiz_attempt_service)],
+    user: Annotated[User, Depends(require_permission("attempt:create"))],
 ):
-    return Envelope(data=service.start_attempt(db, payload))
+    return Envelope(data=service.start_attempt(db, user, payload))
 
 
 @router.post(
@@ -72,8 +84,9 @@ def submit_attempt(
     payload: SubmitAttemptRequest,
     db: DbSession,
     service: Annotated[QuizAttemptService, Depends(get_quiz_attempt_service)],
+    user: Annotated[User, Depends(require_permission("attempt:submit"))],
 ):
-    return Envelope(data=service.submit_attempt(db, attempt_id, payload))
+    return Envelope(data=service.submit_attempt(db, user, attempt_id, payload))
 
 
 @router.get(
@@ -84,7 +97,12 @@ def get_attempt_result(
     attempt_id: int,
     db: DbSession,
     service: Annotated[QuizAttemptService, Depends(get_quiz_attempt_service)],
+    user: Annotated[
+        User,
+        Depends(require_any_permission("attempt:read_own", "attempt:read_all")),
+    ],
     include_questions: Annotated[bool, Query()] = False,
 ):
-    result = service.get_result(db, attempt_id, include_questions=include_questions)
+    scope = resolve_kelas_scope(db, user)
+    result = service.get_result(db, user, scope, attempt_id, include_questions)
     return Envelope(data=result)
