@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.models.user import User
@@ -41,6 +41,15 @@ class UserRepository:
 
     def get_by_id(self, db: Session, user_id: int) -> User | None:
         return db.get(User, user_id)
+
+    def get_by_ids(self, db: Session, user_ids: list[int]) -> list[User]:
+        stmt = select(User).where(User.id.in_(user_ids))
+        return list(db.scalars(stmt))
+
+    def bulk_update_aktif(self, db: Session, user_ids: list[int], aktif: bool) -> int:
+        stmt = update(User).where(User.id.in_(user_ids)).values(aktif=aktif)
+        result = db.execute(stmt)
+        return result.rowcount or 0
 
     def list(
         self,

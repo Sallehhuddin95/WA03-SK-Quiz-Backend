@@ -17,6 +17,7 @@ from app.repositories.kelas import KelasRepository
 from app.repositories.session import SessionRepository
 from app.repositories.user import UserRepository
 from app.schemas.user import (
+    BulkUserDeactivateSummary,
     CreateUserRequest,
     UpdateUserRequest,
     UserFilterParams,
@@ -161,6 +162,30 @@ class UserService:
         user.aktif = False
         self._session_repository.revoke_all_for_user(db, user.id)
         db.commit()
+
+    def soft_delete_many(
+        self, db: Session, requester: User, user_ids: list[int]
+    ) -> BulkUserDeactivateSummary:
+        users = self._user_repository.get_by_ids(db, user_ids)
+        requested_ids = set(user_ids)
+        found_ids = {user.id for user in users}
+        if found_ids != requested_ids:
+            raise ResourceNotFoundError("Pengguna tidak dijumpai.")
+
+        # Authorize every target before mutating anything so an out-of-scope
+        # user rejects the whole batch atomically.
+        for user in users:
+            self._semak_skop_tulis(db, requester, user)
+        for user in users:
+            self._session_repository.revoke_all_for_user(db, user.id)
+        self._user_repository.bulk_update_aktif(
+            db, [user.id for user in users], False
+        )
+        db.commit()
+        return BulkUserDeactivateSummary(
+            mesej=f"{len(users)} pengguna berjaya dinyahaktifkan.",
+            dinyahaktifkan=len(users),
+        )
 
     def _get_user_atau_404(self, db: Session, user_id: int) -> User:
         user = self._user_repository.get_by_id(db, user_id)

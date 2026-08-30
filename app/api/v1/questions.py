@@ -9,6 +9,10 @@ from app.models.user import User
 from app.repositories.question import QuestionRepository
 from app.schemas.common import Envelope, PaginatedEnvelope
 from app.schemas.question import (
+    BulkQuestionDeleteSummary,
+    BulkQuestionIdsRequest,
+    BulkQuestionStatusRequest,
+    BulkQuestionStatusSummary,
     CreateQuestionRequest,
     QuestionFilterParams,
     QuestionResponse,
@@ -113,3 +117,29 @@ def update_question_status(
     staff: Annotated[User, Depends(require_permission("question:manage"))],
 ):
     return Envelope(data=service.update_question_status(db, question_id, payload))
+
+
+@router.post(
+    "/bulk-delete",
+    response_model=Envelope[BulkQuestionDeleteSummary],
+)
+def bulk_delete_questions(
+    payload: BulkQuestionIdsRequest,
+    db: DbSession,
+    service: Annotated[QuestionService, Depends(get_question_service)],
+    staff: Annotated[User, Depends(require_permission("question:manage"))],
+):
+    return Envelope(data=service.bulk_delete(db, payload.ids))
+
+
+@router.post(
+    "/bulk-status",
+    response_model=Envelope[BulkQuestionStatusSummary],
+)
+def bulk_update_questions_status(
+    payload: BulkQuestionStatusRequest,
+    db: DbSession,
+    service: Annotated[QuestionService, Depends(get_question_service)],
+    staff: Annotated[User, Depends(require_permission("question:manage"))],
+):
+    return Envelope(data=service.bulk_update_status(db, payload))

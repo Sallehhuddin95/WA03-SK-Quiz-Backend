@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -13,6 +13,7 @@ MIN_PASANGAN = 2
 MAX_PASANGAN = 6
 MIN_JAWAPAN_DITERIMA = 1
 MAX_JAWAPAN_DITERIMA = 10
+MAX_BULK_ITEMS = 500
 
 
 class CreateQuestionRequest(BaseModel):
@@ -69,6 +70,30 @@ class UpdateQuestionRequest(BaseModel):
 class UpdateQuestionStatusRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    status: QuestionStatus
+
+
+class BulkQuestionIdsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ids: list[Annotated[int, Field(gt=0)]] = Field(min_length=1, max_length=MAX_BULK_ITEMS)
+
+
+class BulkQuestionStatusRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ids: list[Annotated[int, Field(gt=0)]] = Field(min_length=1, max_length=MAX_BULK_ITEMS)
+    status: QuestionStatus
+
+
+class BulkQuestionDeleteSummary(BaseModel):
+    mesej: str
+    dipadam: int
+
+
+class BulkQuestionStatusSummary(BaseModel):
+    mesej: str
+    dikemaskini: int
     status: QuestionStatus
 
 

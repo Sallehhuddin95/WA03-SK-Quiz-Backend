@@ -1,4 +1,4 @@
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.models.question import Question
@@ -103,15 +103,17 @@ class QuestionRepository:
         return db.scalar(select(Topic.nama).where(Topic.id == topic_id))
 
     def get_eligible_question_ids(
-        self, db: Session, *, topic_id: int, tahap_kesukaran: str, limit: int
+        self, db: Session, *, topic_id: int, tahap_kesukaran: str | None, limit: int
     ) -> list[int]:
+        filters = [
+            Question.topic_id == topic_id,
+            Question.status == "aktif",
+        ]
+        if tahap_kesukaran is not None:
+            filters.append(Question.tahap_kesukaran == tahap_kesukaran)
         stmt = (
             select(Question.id)
-            .where(
-                Question.topic_id == topic_id,
-                Question.tahap_kesukaran == tahap_kesukaran,
-                Question.status == "aktif",
-            )
+            .where(*filters)
             .order_by(func.random())
             .limit(limit)
         )
@@ -136,3 +138,21 @@ class QuestionRepository:
     ) -> list[Question]:
         stmt = select(Question).where(Question.id.in_(question_ids))
         return list(db.scalars(stmt))
+
+    def delete_questions_by_ids(self, db: Session, question_ids: list[int]) -> int:
+        stmt = delete(Question).where(Question.id.in_(question_ids))
+        result = db.execute(stmt)
+        db.commit()
+        return result.rowcount or 0
+
+    def update_questions_status_by_ids(
+        self, db: Session, question_ids: list[int], status: str
+    ) -> int:
+        stmt = (
+            update(Question)
+            .where(Question.id.in_(question_ids))
+            .values(status=status)
+        )
+        result = db.execute(stmt)
+        db.commit()
+        return result.rowcount or 0

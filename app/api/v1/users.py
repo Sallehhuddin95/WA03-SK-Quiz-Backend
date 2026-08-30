@@ -11,6 +11,8 @@ from app.repositories.session import SessionRepository
 from app.repositories.user import UserRepository
 from app.schemas.common import Envelope, PaginatedEnvelope
 from app.schemas.user import (
+    BulkUserDeactivateSummary,
+    BulkUserIdsRequest,
     CreateUserRequest,
     ResetPasswordRequest,
     UpdateUserRequest,
@@ -100,3 +102,16 @@ def soft_delete_user(
 ):
     service.soft_delete(db, requester, user_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/bulk-deactivate",
+    response_model=Envelope[BulkUserDeactivateSummary],
+)
+def bulk_deactivate_users(
+    payload: BulkUserIdsRequest,
+    db: DbSession,
+    requester: Annotated[User, Depends(require_permission("user:delete"))],
+    service: Annotated[UserService, Depends(get_user_service)],
+):
+    return Envelope(data=service.soft_delete_many(db, requester, payload.ids))

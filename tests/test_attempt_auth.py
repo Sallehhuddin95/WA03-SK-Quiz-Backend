@@ -187,6 +187,33 @@ def test_pratonton_tanpa_jawapan(super_client):
     assert all("pilihan" in item for item in data)
 
 
+def test_pratonton_semua_tahap(super_client):
+    mudah = seed_questions(super_client, count=4, tahap="mudah")
+    sederhana = seed_questions(super_client, count=3, tahap="sederhana")
+    sukar = seed_questions(super_client, count=3, tahap="sukar")
+
+    response = super_client.get(
+        "/api/v1/kuiz/pratonton",
+        params={"topic_id": 1},
+    )
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert len(data) == 10
+    assert "jawapan_betul" not in str(data)
+    assert all("pilihan" in item for item in data)
+
+    returned_ids = {item["id"] for item in data}
+    difficulty_groups = {
+        "mudah": {q["id"] for q in mudah},
+        "sederhana": {q["id"] for q in sederhana},
+        "sukar": {q["id"] for q in sukar},
+    }
+    difficulties_hit = sum(
+        1 for ids in difficulty_groups.values() if returned_ids & ids
+    )
+    assert difficulties_hit >= 2
+
+
 def test_pratonton_murid_403(user_factory):
     user_factory(username="murid.test", role="murid")
     client = auth_client(app, "murid.test")
