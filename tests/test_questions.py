@@ -244,3 +244,140 @@ def test_cipta_padanan_valid(admin_client):
     response = admin_client.post("/api/v1/questions", json=soalan_padanan())
     assert response.status_code == 201
     assert len(response.json()["data"]["jawapan_betul"]["pasangan"]) == 2
+
+
+def test_bulk_delete_soalan(admin_client):
+    created = create_question(admin_client, soalan_aneka())
+    response = admin_client.post(
+        "/api/v1/questions/bulk-delete",
+        json={"ids": [created["id"]]},
+    )
+    assert response.status_code == 200
+    assert response.json()["data"]["dipadam"] == 1
+    response = admin_client.get(f"/api/v1/questions/{created['id']}")
+    assert response.status_code == 404
+
+
+def test_bulk_delete_skip_id_tidak_wujud(admin_client):
+    create_question(admin_client, soalan_aneka())
+    response = admin_client.post(
+        "/api/v1/questions/bulk-delete",
+        json={"ids": [1, 999]},
+    )
+    assert response.status_code == 200
+    assert response.json()["data"]["dipadam"] == 1
+    response = admin_client.get("/api/v1/questions/1")
+    assert response.status_code == 404
+
+
+def test_bulk_delete_tanpa_autentikasi_401(client):
+    response = client.post(
+        "/api/v1/questions/bulk-delete", json={"ids": [1]}
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"]["kod"] == "SESI_TAMAT"
+
+
+def test_bulk_delete_murid_403(client, user_factory):
+    user_factory(username="murid.test", role="murid")
+    login(client, "murid.test")
+    response = client.post(
+        "/api/v1/questions/bulk-delete", json={"ids": [1]}
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"]["kod"] == "TIADA_KEBENARAN"
+
+
+def test_bulk_delete_ids_kosong_422(admin_client):
+    response = admin_client.post(
+        "/api/v1/questions/bulk-delete", json={"ids": []}
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"]["kod"] == "VALIDASI_GAGAL"
+
+
+def test_bulk_delete_ids_tidak_sah_422(admin_client):
+    response = admin_client.post(
+        "/api/v1/questions/bulk-delete", json={"ids": [0]}
+    )
+    assert response.status_code == 422
+
+
+def test_bulk_delete_medan_tambahan_422(admin_client):
+    response = admin_client.post(
+        "/api/v1/questions/bulk-delete", json={"ids": [1], "label": "x"}
+    )
+    assert response.status_code == 422
+
+
+def test_bulk_status_nyahaktifkan(admin_client):
+    create_question(admin_client, soalan_aneka())
+    create_question(admin_client, soalan_aneka())
+    response = admin_client.post(
+        "/api/v1/questions/bulk-status",
+        json={"ids": [1, 2], "status": "tidak_aktif"},
+    )
+    assert response.status_code == 200
+    assert response.json()["data"]["dikemaskini"] == 2
+    response = admin_client.get("/api/v1/questions/1")
+    assert response.json()["data"]["status"] == "tidak_aktif"
+    response = admin_client.get("/api/v1/questions/2")
+    assert response.json()["data"]["status"] == "tidak_aktif"
+
+
+def test_bulk_status_aktif_dalam_batas(admin_client):
+    seed_questions(admin_client, count=9)
+    inactive = create_question(admin_client, soalan_aneka(status="tidak_aktif"))
+    response = admin_client.post(
+        "/api/v1/questions/bulk-status",
+        json={"ids": [inactive["id"]], "status": "aktif"},
+    )
+    assert response.status_code == 200
+    assert response.json()["data"]["dikemaskini"] == 1
+    response = admin_client.get(f"/api/v1/questions/{inactive['id']}")
+    assert response.json()["data"]["status"] == "aktif"
+
+
+def test_bulk_status_aktif_melebihi_had_409(admin_client):
+    seed_questions(admin_client, count=10)
+    inactive = create_question(admin_client, soalan_aneka(status="tidak_aktif"))
+    response = admin_client.post(
+        "/api/v1/questions/bulk-status",
+        json={"ids": [inactive["id"]], "status": "aktif"},
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"]["kod"] == "HAD_SOALAN_DICAPAI"
+    # atomic call reject: soalaran kekal tidak aktif
+    response = admin_client.get(f"/api/v1/questions/{inactive['id']}")
+    assert response.json()["data"]["status"] == "tidak_aktif"
+
+
+def test_bulk_status_aktif_kumpulan_melebihi_had_409(admin_client):
+    seed_questions(admin_client, count=9)
+    a = create_question(admin_client, soalan_aneka(status="tidak_aktif"))
+    b = create_question(admin_client, soalan_aneka(status="tidak_aktif"))
+    response = admin_client.post(
+        "/api/v1/questions/bulk-status",
+        json={"ids": [a["id"], b["id"]], "status": "aktif"},
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"]["kod"] == "HAD_SOALAN_DICAPAI"
+    for q in (a, b):
+        response = admin_client.get(f"/api/v1/questions/{q['id']}")
+        assert response.json()["data"]["status"] == "tidak_aktif"
+
+
+def test_bulk_status_medan_tambahan_422(admin_client):
+    response = admin_client.post(
+        "/api/v1/questions/bulk-status",
+        json={"ids": [1], "status": "aktif", "label": "x"},
+    )
+    assert response.status_code == 422
+
+
+def test_bulk_status_status_tidak_sah_422(admin_client):
+    response = admin_client.post(
+        "/api/v1/questions/bulk-status",
+        json={"ids": [1], "status": "entah"},
+    )
+    assert response.status_code == 422

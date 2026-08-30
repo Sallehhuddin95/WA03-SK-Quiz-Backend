@@ -274,8 +274,8 @@ Staff preview of quiz questions without answers.
 
 Query params:
 
-- `topic_id`: required.
-- `tahap_kesukaran`: optional, one of `mudah`, `sederhana`, `sukar`.
+- `topic_id`: required. A single topic is always selected; there is no "semua topik" option.
+- `tahap_kesukaran`: optional, one of `mudah`, `sederhana`, `sukar`. When omitted, the query spans all difficulty levels for the topic. This is the "semua" (all) case.
 
 ### Response
 
@@ -299,16 +299,17 @@ Success `200`:
 }
 ```
 
-Up to 10 questions, same selection rules as a real attempt. Answer fields are never included.
+Up to 10 questions. When `tahap_kesukaran` is set, selection rules match a real attempt for that difficulty. When it is omitted, questions are drawn across every difficulty level for the topic. Answer fields are never included.
 
 ### Error Shapes
 
 - `401 SESI_TAMAT`.
 - `403 AKAUN_TIDAK_AKTIF`.
 - `403 TIADA_KEBENARAN`: permission missing.
-- `400 SOALAN_TIDAK_MENCUKUPI`: not enough active questions for the topic and difficulty.
+- `400 SOALAN_TIDAK_MENCUKUPI`: fewer than 10 active questions for the topic within the selected scope. When `tahap_kesukaran` is omitted, the count spans all difficulty levels.
 
 ### Validation Rules
 
 - This endpoint backs the staff student-view preview. It never creates an attempt and never records answers.
 - Preview is not impersonation: no session identity changes, and no attempt rows are created.
+- An omitted `tahap_kesukaran` is the "semua" case. It selects questions across all difficulty levels for the given topic, not questions with a NULL difficulty.

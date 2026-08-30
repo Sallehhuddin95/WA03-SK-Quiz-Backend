@@ -304,3 +304,57 @@ Success `204 No Content`. The user's `aktif` is set to `false`. No rows are remo
 - `admin` callers may delete `murid` users in own classes only.
 - Soft delete preserves history: quiz attempts keep `nama_peserta` snapshots and the `user_id` reference stays intact.
 - There is no hard delete endpoint.
+
+---
+
+## POST /users/bulk-deactivate
+
+### Purpose
+
+Soft-delete multiple users in one call. The table's multi-select "nyahaktif" action calls this endpoint.
+
+### Authentication
+
+`require_permission("user:delete")`.
+
+### Request
+
+Body:
+
+```json
+{
+  "ids": [12, 14, 17]
+}
+```
+
+`ids` must contain at least 1 and at most 500 positive integers. No other fields are accepted.
+
+### Response
+
+Success `200`:
+
+```json
+{
+  "data": {
+    "mesej": "2 pengguna berjaya dinyahaktifkan.",
+    "dinyahaktifkan": 2
+  }
+}
+```
+
+Each target user has `aktif` set to `false` and all of the target's sessions revoked, exactly like `DELETE /users/{id}`.
+
+### Error Shapes
+
+- `401 SESI_TAMAT`.
+- `403 AKAUN_TIDAK_AKTIF`.
+- `403 TIADA_KEBENARAN`: any target is outside the caller's own scope, or any target role is not `murid` for an `admin` caller.
+- `404 SUMBER_TIDAK_DIJUMPAI`: any target id does not exist.
+- `400`: validation failure.
+
+### Validation Rules
+
+- The call is atomic. If any target is out of scope or missing, the whole batch is rejected and nothing is changed.
+- `admin` callers may deactivate `murid` users in own classes only. Shared-class murid are read-only.
+- `super_admin` may deactivate any `admin` or `murid` user.
+- Soft delete preserves history. There is no hard delete endpoint.

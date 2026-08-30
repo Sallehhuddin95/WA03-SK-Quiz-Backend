@@ -10,6 +10,9 @@ from app.models.question import Question
 from app.repositories.question import QuestionRepository
 from app.schemas.question import (
     PENANDA_TEMPAT_KOSONG,
+    BulkQuestionDeleteSummary,
+    BulkQuestionStatusRequest,
+    BulkQuestionStatusSummary,
     CreateQuestionRequest,
     QuestionFilterParams,
     QuestionResponse,
@@ -148,6 +151,60 @@ class QuestionService:
 
         updated = self._repository.update_question(db, question, status=request.status)
         return self._to_response(db, updated)
+
+    def bulk_delete(self, db: Session, question_ids: list[int]) -> BulkQuestionDeleteSummary:
+        questions = self._repository.get_questions_by_ids(db, question_ids)
+        found_ids = [question.id for question in questions]
+        deleted = self._repository.delete_questions_by_ids(db, found_ids)
+        return BulkQuestionDeleteSummary(
+            mesej=f"{deleted} soalan berjaya dipadam.",
+            dipadam=deleted,
+        )
+
+    def bulk_update_status(
+        self, db: Session, request: BulkQuestionStatusRequest
+    ) -> BulkQuestionStatusSummary:
+        questions = self._repository.get_questions_by_ids(db, request.ids)
+        self._semak_had_aktif_batch(db, questions, request.status)
+        change_ids = [question.id for question in questions if question.status != request.status]
+        updated = 0
+        if change_ids:
+            updated = self._repository.update_questions_status_by_ids(
+                db, change_ids, request.status
+            )
+        return BulkQuestionStatusSummary(
+            mesej=f"{updated} soalan berjaya dikemaskini.",
+            dikemaskini=updated,
+            status=request.status,
+        )
+
+    def _semak_had_aktif_batch(
+        self, db: Session, questions: list[Question], status: str
+    ) -> None:
+        """Reject the whole batch if activating any group would exceed HAD_AKTIF.
+
+        Activation is only a risk when the target status is "aktif". Questions
+        that are already active stay in the count; questions switching from
+        inactive to active add to it. The guard runs before any write, so a
+        failing batch leaves everything untouched (atomic reject).
+        """
+        if status != "aktif":
+            return
+        groups: dict[tuple[int, str, str], list[Question]] = {}
+        for question in questions:
+            if question.status == "aktif":
+                continue
+            key = (question.topic_id, question.jenis_soalan, question.tahap_kesukaran)
+            groups.setdefault(key, []).append(question)
+        for (topic_id, jenis_soalan, tahap_kesukaran), batch_questions in groups.items():
+            count = self._repository.count_active(
+                db,
+                topic_id=topic_id,
+                jenis_soalan=jenis_soalan,
+                tahap_kesukaran=tahap_kesukaran,
+            )
+            if count + len(batch_questions) > HAD_AKTIF:
+                raise QuestionLimitReachedError()
 
     def _to_response(self, db: Session, question: Question) -> QuestionResponse:
         topic_nama = self._repository.get_topic_nama(db, question.topic_id) or ""

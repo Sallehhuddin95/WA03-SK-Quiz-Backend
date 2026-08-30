@@ -290,3 +290,115 @@ def test_kemaskini_murid_skop_own_sahaja(guru_a_client, kelas_lain):
         json={"role": "admin"},
     )
     assert response.status_code == 422
+
+
+def test_bulk_deactivate_murid_sendiri(guru_a_client):
+    satu = guru_a_client.post(
+        "/api/v1/users",
+        json=payload_murid(
+            username="murid.satu", kelas_id=guru_a_client.kelas_a.id
+        ),
+    ).json()["data"]
+    dua = guru_a_client.post(
+        "/api/v1/users",
+        json=payload_murid(
+            username="murid.dua", kelas_id=guru_a_client.kelas_a.id
+        ),
+    ).json()["data"]
+
+    murid_satu = auth_client(app, "murid.satu")
+    murid_dua = auth_client(app, "murid.dua")
+    assert murid_satu.get("/api/v1/auth/me").status_code == 200
+    assert murid_dua.get("/api/v1/auth/me").status_code == 200
+
+    response = guru_a_client.post(
+        "/api/v1/users/bulk-deactivate",
+        json={"ids": [satu["id"], dua["id"]]},
+    )
+    assert response.status_code == 200
+    assert response.json()["data"]["dinyahaktifkan"] == 2
+
+    # sesi kedua-dua murid direvoke
+    assert murid_satu.get("/api/v1/auth/me").status_code == 401
+    assert murid_dua.get("/api/v1/auth/me").status_code == 401
+
+    # log masuk disekat
+    for username in ("murid.satu", "murid.dua"):
+        assert murid_satu.post(
+            "/api/v1/auth/login",
+            json={"username": username, "kata_laluan": "rahasia123"},
+        ).status_code == 403
+
+
+def test_bulk_deactivate_luar_skop_403(guru_a_client, kelas_lain, user_factory):
+    dalam = guru_a_client.post(
+        "/api/v1/users",
+        json=payload_murid(
+            username="murid.dalam", kelas_id=guru_a_client.kelas_a.id
+        ),
+    ).json()["data"]
+    luar = user_factory(
+        username="murid.luar", role="murid", kelas_id=kelas_lain.id
+    )
+
+    response = guru_a_client.post(
+        "/api/v1/users/bulk-deactivate",
+        json={"ids": [dalam["id"], luar.id]},
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"]["kod"] == "TIADA_KEBENARAN"
+
+    # atomic reject: murid dalam skop masih aktif
+    response = guru_a_client.get(f"/api/v1/users/{dalam['id']}")
+    assert response.json()["data"]["aktif"] is True
+
+
+def test_bulk_deactivate_tidak_wujud_404(guru_a_client):
+    response = guru_a_client.post(
+        "/api/v1/users/bulk-deactivate", json={"ids": [999]}
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"]["kod"] == "SUMBER_TIDAK_DIJUMPAI"
+
+
+def test_bulk_deactivate_admin_oleh_admin_403(guru_a_client, user_factory):
+    guru_b = user_factory(username="guru.b", role="admin")
+    response = guru_a_client.post(
+        "/api/v1/users/bulk-deactivate", json={"ids": [guru_b.id]}
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"]["kod"] == "TIADA_KEBENARAN"
+
+
+def test_bulk_deactivate_tanpa_autentikasi_401(client):
+    response = client.post(
+        "/api/v1/users/bulk-deactivate", json={"ids": [1]}
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"]["kod"] == "SESI_TAMAT"
+
+
+def test_bulk_deactivate_murid_403(client, user_factory):
+    user_factory(username="murid.test", role="murid")
+    login(client, "murid.test")
+    response = client.post(
+        "/api/v1/users/bulk-deactivate", json={"ids": [1]}
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"]["kod"] == "TIADA_KEBENARAN"
+
+
+def test_bulk_deactivate_ids_kosong_422(guru_a_client):
+    response = guru_a_client.post(
+        "/api/v1/users/bulk-deactivate", json={"ids": []}
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"]["kod"] == "VALIDASI_GAGAL"
+
+
+def test_bulk_deactivate_medan_tambahan_422(guru_a_client):
+    response = guru_a_client.post(
+        "/api/v1/users/bulk-deactivate",
+        json={"ids": [1], "status": "tidak_aktif"},
+    )
+    assert response.status_code == 422
